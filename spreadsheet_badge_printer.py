@@ -8,47 +8,21 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+pdfmetrics.registerFont(TTFont('SourceSansPro-Black', 'SourceSansPro-Black.ttf'))
+# pdfmetrics.registerFont(TTFont('VeraBd', 'VeraBd.ttf'))
+
+import os
+import pandas as pd      # for working with csv
+
 import gdata.spreadsheet.service
 
-DOCUMENT_KEY='update to be your key/id from hosted google docs' #comes from the url key=xxxx
+data_file="names.csv"
 
-"""Prints PDF name badges to fit Avery name badges.
-Looks up data from a CSV (which was using the Form submission feature
-to retrieve signups for a conference.) 
-"""
-
-
-class SpreadsheetFetcher:  
-  def __init__(self, user, password):
-    self.user = user
-    self.password = password
-  
-  def retrieveSpreadsheetsList(self, key=DOCUMENT_KEY):
-    client = gdata.spreadsheet.service.SpreadsheetsService()
-    client.ClientLogin(self.user, self.password, 'HOSTED') #assumes hosted google docs
-    self.spreadsheets_entries_list = client.GetListFeed(key)
-    
-  def toRegistrantList(self):
-    list = []
-    for entry in self.spreadsheets_entries_list.entry:
-      registration = Registrant(entry.updated.text,
-                                  entry.custom['fullname'].text,
-                                  entry.custom['ldapusername'].text,
-                                  entry.custom['homeoffice'].text,
-                                  entry.custom['jobrole'].text,)
-      list.append(registration)
-    return list
-
-class Registrant:
-  def __init__(self, registration_time, full_name, ldap_name, home_office, job_role):
-    self.__registration_time = registration_time
-    self.full_name = full_name
-    self.ldap_name = ldap_name
-    self.home_office = home_office
-    self.job_role = job_role
-    
-  def __str__(self):
-    return u'%s, a %s from %s' % (self.full_name, self.job_role, self.home_office)
+# from https://identity.stanford.edu/name-emblems.html#stanford-seal
+logo_file="SU_Seal_Red.png"
   
 class BadgePrinter:
   def __init__(self, registration_list, filename='Badges_rendered.pdf'):
@@ -63,9 +37,9 @@ class BadgePrinter:
   def _drawOnePage(self, registrants):  
     left_column_x = 2.25
     right_column_x = 6.25
-    top_y = 9
-    middle_y = 6
-    bottom_y = 3
+    top_y = 8.5
+    middle_y = 5.5
+    bottom_y = 2.5
     i = 0
     for x in [left_column_x, right_column_x]:
       for y in [top_y, middle_y, bottom_y]:
@@ -74,19 +48,75 @@ class BadgePrinter:
         i += 1      
     self.pdf.showPage()
 
-  def _drawOneNameBadge(self, x, y, registrant):
+  def _drawOneNameBadge(self, badge_center_x, badge_center_y, registrant):
+    badge_height = 3.0
+    badge_width = 4.0
+
+    def x(old):
+      return (badge_center_x + old) * inch
+
+    def y(old):
+      return (badge_center_y + old) * inch
+
+    img_size = 1.0
     self.pdf.setFillColor(colors.black)
-#    self.pdf.setFont("Helvetica", 18)
-#    self.pdf.drawImage("testing_logo.jpg", (x + 1.1) * inch, (y - .75) * inch)
-    self.pdf.setFont("Helvetica", 19)
-    self.pdf.drawCentredString(x * inch, y * inch, str(registrant.full_name.encode('latin-1')))
-    self.pdf.setFont("Helvetica", 12)
-    self.pdf.drawCentredString(x * inch, (y - .25) * inch, str(registrant.home_office))
-    self.pdf.setFont("Helvetica", 8)
-    self.pdf.drawCentredString(x * inch, (y - .5) * inch, str(registrant.job_role))
-    self.pdf.setFont("Helvetica", 6)
-    self.pdf.setFillColor(colors.green)
-    self.pdf.drawCentredString(x * inch, (y - .7) * inch, 'Test Engineering NYC Summit 2008')
+    self.pdf.drawImage(
+      "SU_Seal_Red.png",
+      x(-(img_size/2)),
+      y(0),
+      width = img_size * inch,
+      height = img_size * inch,
+      mask='auto'
+    )
+
+    name = "{} {}".format(registrant["first_name"], registrant["last_name"])
+    title = "{}, {}".format(registrant["title"], registrant["area"])
+
+    if len(name)>30:
+      name_start = " ".join(name.split()[:-1])
+      name_continuation = name.split()[-1]
+
+      self.pdf.setFont("SourceSansPro-Black", 19)
+      self.pdf.drawCentredString(
+        x(0),
+        y(-0.25),
+        name_start
+      )
+
+      self.pdf.setFont("SourceSansPro-Black", 19)
+      self.pdf.drawCentredString(
+        x(0),
+        y(-0.5),
+        name_continuation
+      )
+
+      self.pdf.setFont("Helvetica", 12)
+      self.pdf.drawCentredString(
+        x(0),
+        y(-0.75),
+        title
+      )
+    else:
+
+      self.pdf.setFont("SourceSansPro-Black", 19)
+      self.pdf.drawCentredString(
+        x(0),
+        y(-0.25),
+        name
+      )
+
+      self.pdf.setFont("Helvetica", 12)
+      self.pdf.drawCentredString(
+        x(0),
+        y(-0.5),
+        title
+      )
+
+    # self.pdf.setFont("Helvetica", 8)
+    # self.pdf.drawCentredString(x * inch, (y - .5) * inch, str(registrant.job_role))
+    # self.pdf.setFont("Helvetica", 6)
+    # self.pdf.setFillColor(colors.green)
+    # self.pdf.drawCentredString(x * inch, (y - .7) * inch, 'Test Engineering NYC Summit 2008')
 
   def _chunkRegistrantsIntoSixes(self):
     chunked = []
@@ -94,16 +124,14 @@ class BadgePrinter:
       chunked.append(self.registration_list[i:i + 6])
     return chunked
   
-def main():        
-  user = raw_input("Username [jwolter@example.com]:\n")
-  if not user:
-    user = 'jwolter@example.com'
-  password = getpass.getpass()
-        
-  # Inject into the NamebadgeMaker all the collaborators, for easy testing
-  fetcher = SpreadsheetFetcher(user, password)
-  fetcher.retrieveSpreadsheetsList()
-  registrats_list = fetcher.toRegistrantList()
+def main():
+
+  csvfile = "names.csv"
+
+  # get data file
+  df = pd.read_csv(os.path.expanduser(csvfile))
+  registrats_list = df.T.to_dict().values()
+
   badge_printer = BadgePrinter(registrats_list)
   badge_printer.drawBadges()
 
