@@ -11,7 +11,7 @@ Usage
 Install dependencies:
 
 # pip install reportlab
-# pip install dgata
+# pip install gdata
 # update the source w/ the doc's key to the right doc that makes sense for what you columns are (maybe changing that part of the script too).
 # python spreadsheet_badge_printer.py
 
