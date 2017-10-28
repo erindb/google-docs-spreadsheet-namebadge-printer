@@ -11,8 +11,14 @@ from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
+import numpy
+
 pdfmetrics.registerFont(TTFont('SourceSansPro-Black', 'SourceSansPro-Black.ttf'))
-# pdfmetrics.registerFont(TTFont('VeraBd', 'VeraBd.ttf'))
+pdfmetrics.registerFont(TTFont('SourceSansPro-Semibold', 'SourceSansPro-Semibold.ttf'))
+pdfmetrics.registerFont(TTFont('SourceSansPro-Light', 'SourceSansPro-Light.ttf'))
+
+badge_height = 3.0
+badge_width = 4.0
 
 import os
 import pandas as pd      # for working with csv
@@ -35,11 +41,11 @@ class BadgePrinter:
     self.pdf.save()
         
   def _drawOnePage(self, registrants):  
-    left_column_x = 2.25
-    right_column_x = 6.25
-    top_y = 8.5
-    middle_y = 5.5
+    left_column_x = 2.15
+    right_column_x = left_column_x + badge_width
     bottom_y = 2.5
+    top_y = bottom_y + badge_height*2
+    middle_y = bottom_y + badge_height
     i = 0
     for x in [left_column_x, right_column_x]:
       for y in [top_y, middle_y, bottom_y]:
@@ -49,8 +55,6 @@ class BadgePrinter:
     self.pdf.showPage()
 
   def _drawOneNameBadge(self, badge_center_x, badge_center_y, registrant):
-    badge_height = 3.0
-    badge_width = 4.0
 
     def x(old):
       return (badge_center_x + old) * inch
@@ -69,28 +73,39 @@ class BadgePrinter:
       mask='auto'
     )
 
-    name = "{} {}".format(registrant["first_name"], registrant["last_name"])
-    title = "{}, {}".format(registrant["title"], registrant["area"])
+    first_name = registrant["first_name"]
+    last_name = registrant["last_name"]
+    name = "{} {}".format(first_name, last_name)
+
+    area = registrant["area"]
+
+    title = registrant["title"]
+    if title != "Paths to PhD Participant":
+      title = "{}, {}".format(registrant["title"], area)
+
+    name_font = "SourceSansPro-Semibold"
+    # name_font = "SourceSansPro-Black"
+    title_font = "SourceSansPro-Light"
 
     if len(name)>30:
       name_start = " ".join(name.split()[:-1])
       name_continuation = name.split()[-1]
 
-      self.pdf.setFont("SourceSansPro-Black", 19)
+      self.pdf.setFont(name_font, 19)
       self.pdf.drawCentredString(
         x(0),
         y(-0.25),
         name_start
       )
 
-      self.pdf.setFont("SourceSansPro-Black", 19)
+      self.pdf.setFont(name_font, 19)
       self.pdf.drawCentredString(
         x(0),
         y(-0.5),
         name_continuation
       )
 
-      self.pdf.setFont("Helvetica", 12)
+      self.pdf.setFont(title_font, 12)
       self.pdf.drawCentredString(
         x(0),
         y(-0.75),
@@ -98,14 +113,14 @@ class BadgePrinter:
       )
     else:
 
-      self.pdf.setFont("SourceSansPro-Black", 19)
+      self.pdf.setFont(name_font, 19)
       self.pdf.drawCentredString(
         x(0),
         y(-0.25),
         name
       )
 
-      self.pdf.setFont("Helvetica", 12)
+      self.pdf.setFont(title_font, 12)
       self.pdf.drawCentredString(
         x(0),
         y(-0.5),
