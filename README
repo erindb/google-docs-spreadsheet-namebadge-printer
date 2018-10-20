@@ -1,23 +1,23 @@
+# Namebadge Printer
+
 Prints PDF name badges to fit Avery name badges.
-Looks up data from a google spreadsheet (which was using the Form submission feature
-to retrieve signups for a conference.) 
+Looks up data from a CSV.
 
 Jonathan Andrew Wolter, 2008
+modified by Erin Bennett, 2018
+
+Set up for Avery badges that are 4"x3".
 
 
-Usage
------
+## Install Dependencies
 
-Install dependencies:
+* install [pip](https://pip.pypa.io/en/stable/installing/)
+* `pip install reportlab`
+* `wget https://identity.stanford.edu/downloads/SU_New_BlockStree_2color_darkbgrd.png`
+* download your CSV file (e.g. from Google Sheets)
 
-# pip install reportlab
-# pip install dgata
-# update the source w/ the doc's key to the right doc that makes sense for what you columns are (maybe changing that part of the script too).
-# python spreadsheet_badge_printer.py
+## Usage
 
+Replace `[CSV filename]` with the actual CSV filename and run the following:
 
-
-
-TODO:
-- upload the lib deps so it's stand-alone runnable.
-- turn into a google app engine hosted project so anyone can make badges from google docs data.
+`python spreadsheet_badge_printer.py --f [CSV filename]`

@@ -1,110 +1,125 @@
 #!/usr/bin/python2.4
 # -*- coding: latin-1 -*-
 
-import getpass
+import argparse
+import pandas as pd
+from sys import exit
 
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib import colors
+from reportlab.lib import utils
 
-import gdata.spreadsheet.service
+def parse_args():
+  parser = argparse.ArgumentParser(
+    description = ("Prints PDF name badges to fit Avery name badges"))
+  parser.add_argument("--f", type = str,
+                      help = "filename of CSV file (downloaded from gdocs)")
+  parser.add_argument("--o", type = str, default = "Badges_rendered.pdf",
+                      help = "output pdf filename")
+  parser.add_argument("--event_name", type = str, default = "",
+                      help = "output pdf filename")
+  return parser.parse_args()
 
-DOCUMENT_KEY='update to be your key/id from hosted google docs' #comes from the url key=xxxx
-
-"""Prints PDF name badges to fit Avery name badges.
-Looks up data from a CSV (which was using the Form submission feature
-to retrieve signups for a conference.) 
-"""
-
-
-class SpreadsheetFetcher:  
-  def __init__(self, user, password):
-    self.user = user
-    self.password = password
-  
-  def retrieveSpreadsheetsList(self, key=DOCUMENT_KEY):
-    client = gdata.spreadsheet.service.SpreadsheetsService()
-    client.ClientLogin(self.user, self.password, 'HOSTED') #assumes hosted google docs
-    self.spreadsheets_entries_list = client.GetListFeed(key)
-    
-  def toRegistrantList(self):
-    list = []
-    for entry in self.spreadsheets_entries_list.entry:
-      registration = Registrant(entry.updated.text,
-                                  entry.custom['fullname'].text,
-                                  entry.custom['ldapusername'].text,
-                                  entry.custom['homeoffice'].text,
-                                  entry.custom['jobrole'].text,)
-      list.append(registration)
-    return list
-
-class Registrant:
-  def __init__(self, registration_time, full_name, ldap_name, home_office, job_role):
-    self.__registration_time = registration_time
-    self.full_name = full_name
-    self.ldap_name = ldap_name
-    self.home_office = home_office
-    self.job_role = job_role
-    
-  def __str__(self):
-    return u'%s, a %s from %s' % (self.full_name, self.job_role, self.home_office)
-  
 class BadgePrinter:
-  def __init__(self, registration_list, filename='Badges_rendered.pdf'):
-    self.registration_list = registration_list
-    self.pdf = Canvas(filename, pagesize = letter)
+  def __init__(self, df, output_filename, event_name):
+    self.df = df
+    self.pdf = Canvas(output_filename, pagesize = letter)
+    self.event_name = event_name
+    self.logo_path = "SU_New_BlockStree_2color.png"
     
-  def drawBadges(self):  
+  def drawBadges(self):
     for six_registrants in self._chunkRegistrantsIntoSixes():
       self._drawOnePage(six_registrants)
     self.pdf.save()
         
-  def _drawOnePage(self, registrants):  
+  def _drawOnePage(self, registrants):
     left_column_x = 2.25
     right_column_x = 6.25
     top_y = 9
     middle_y = 6
     bottom_y = 3
+    xs = []
+    ys = []
     i = 0
     for x in [left_column_x, right_column_x]:
       for y in [top_y, middle_y, bottom_y]:
         if i < len(registrants):
-          self._drawOneNameBadge(x, y, registrants[i])
-        i += 1      
+          xs.append(x)
+          ys.append(y)
+        i += 1
+    registrants = registrants.assign(x = xs, y = ys)
+    registrants.apply(self._drawOneNameBadge, axis=1)
     self.pdf.showPage()
 
-  def _drawOneNameBadge(self, x, y, registrant):
+  def _drawLogo(self, x, y, offset):
+    # no smaller than 0.375
+    logo_width = 0.42 * inch
+
+    img = utils.ImageReader(self.logo_path)
+    iw, ih = img.getSize()
+    aspect = ih / float(iw)
+    logo_height=logo_width * aspect
+
+    # # find top corner of image
+    logo_left_x = x * inch - logo_width/2
+    logo_top_y = (y - 3.8 - 0.7 + 0.3 - 0.1 + offset/2) * inch + logo_width
+
+    # allow 1/8 height of block S surrounding logo
+    self.pdf.drawImage(self.logo_path,
+                       x = logo_left_x,
+                       y = logo_top_y,
+                       width = logo_width, # 3/8 smallest
+                       preserveAspectRatio = True,
+                       mask = "auto")
+
+  def _drawName(self, x, y, name):
     self.pdf.setFillColor(colors.black)
-#    self.pdf.setFont("Helvetica", 18)
-#    self.pdf.drawImage("testing_logo.jpg", (x + 1.1) * inch, (y - .75) * inch)
-    self.pdf.setFont("Helvetica", 19)
-    self.pdf.drawCentredString(x * inch, y * inch, str(registrant.full_name.encode('latin-1')))
-    self.pdf.setFont("Helvetica", 12)
-    self.pdf.drawCentredString(x * inch, (y - .25) * inch, str(registrant.home_office))
-    self.pdf.setFont("Helvetica", 8)
-    self.pdf.drawCentredString(x * inch, (y - .5) * inch, str(registrant.job_role))
-    self.pdf.setFont("Helvetica", 6)
-    self.pdf.setFillColor(colors.green)
-    self.pdf.drawCentredString(x * inch, (y - .7) * inch, 'Test Engineering NYC Summit 2008')
+    self.pdf.setFont("Helvetica", 24)
+    name_x = x * inch
+    name_y = (y - 0.73 + 0.3 - 0.1) * inch
+    if (len(name) > 22):
+      print(name)
+      name_x = x * inch
+      name_y1 = name_y
+      name_y2 = name_y + 0.2 * inch
+      name_elements = name.split(" ")
+      name1 = " ".join(name_elements[0:2])
+      name2 = " ".join(name_elements[2:])
+      offset = 0.375
+      self.pdf.drawCentredString(name_x, name_y1 + offset/2*inch, str(name1))
+      self.pdf.drawCentredString(name_x, name_y1 - offset/2*inch, str(name2))
+      return offset
+    else:
+      self.pdf.drawCentredString(name_x, name_y, str(name))
+      return 0
+
+  def _drawOneNameBadge(self, registrant):
+    x = registrant.x
+    y = registrant.y
+    name_offset = self._drawName(x, y, registrant.full_name)
+    self._drawLogo(x, y, name_offset)
+    self.pdf.setFillColor(colors.black)
+    self.pdf.setFont("Helvetica", 18)
+    self.pdf.drawCentredString(x * inch, (y - .25 - 0.85 + 0.3 - 0.1 - name_offset/2) * inch, str(registrant.title))
+    if type(registrant.area)==str:
+      self.pdf.setFont("Helvetica", 12)
+      self.pdf.drawCentredString(x * inch, (y - .5 - 0.9 + 0.3 - 0.1 - name_offset/2) * inch, str(registrant.area))
+    # # self.pdf.setFont("Helvetica", 6)
+    # # self.pdf.setFillColor(colors.green)
+    # # self.pdf.drawCentredString(x * inch, (y - .7) * inch, str(self.event_name))
 
   def _chunkRegistrantsIntoSixes(self):
     chunked = []
-    for i in range(0, len(self.registration_list), 6):
-      chunked.append(self.registration_list[i:i + 6])
+    for i in range(0, len(self.df), 6):
+      chunked.append(self.df[i:i + 6])
     return chunked
-  
-def main():        
-  user = raw_input("Username [jwolter@example.com]:\n")
-  if not user:
-    user = 'jwolter@example.com'
-  password = getpass.getpass()
-        
-  # Inject into the NamebadgeMaker all the collaborators, for easy testing
-  fetcher = SpreadsheetFetcher(user, password)
-  fetcher.retrieveSpreadsheetsList()
-  registrats_list = fetcher.toRegistrantList()
-  badge_printer = BadgePrinter(registrats_list)
+
+def main():
+  args = parse_args()
+  df = pd.read_csv(args.f)
+  badge_printer = BadgePrinter(df, args.o, args.event_name)
   badge_printer.drawBadges()
 
 if __name__ == '__main__':
